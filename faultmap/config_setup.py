@@ -18,7 +18,6 @@ def ensure_existence(location, make=True):
 
 def get_locations(mode="cases"):
     """Gets all required directories related to the specified mode.
-
     Parameters
     ----------
         mode : string
@@ -27,14 +26,12 @@ def get_locations(mode="cases"):
             Test directiories are read from testconfig.json which is bundled
             with the code, while cases directories are read from
             caseconfig.json which must be created by the user.
-
     Returns
     -------
         dataloc : path
         configloc : path
         saveloc : path
         infodynamicsloc : path
-
     """
     # Load directories config file
     if mode == "test":
@@ -61,7 +58,6 @@ def get_locations(mode="cases"):
 
 def runsetup(mode, case):
     """Gets all required directories from the case configuration file.
-
     Parameters
     ----------
         mode : string
@@ -73,14 +69,12 @@ def runsetup(mode, case):
         case : string
             The name of the case that is to be run. Points to dictionary
             in either test or case config files.
-
     Returns
     -------
         saveloc : path
         caseconfigdir : path
         casedir : path
         infodynamicsloc : path
-
     """
 
     dataloc, configloc, saveloc, infodynamicsloc = get_locations(mode)

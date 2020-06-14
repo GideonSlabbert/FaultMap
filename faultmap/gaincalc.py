@@ -28,6 +28,7 @@ import multiprocessing
 import os
 import time
 
+import h5py
 import numpy as np
 import pandas as pd
 
@@ -35,6 +36,7 @@ from faultmap import data_processing, config_setup
 from test import datagen
 from faultmap import gaincalc_oneset
 from faultmap.gaincalculators import CorrWeightcalc, TransentWeightcalc
+from db_functions import convert_db_info_to_dict_weightcalc
 
 
 class WeightcalcData(object):
@@ -47,6 +49,7 @@ class WeightcalcData(object):
         self,
         mode,
         case,
+        case_id,
         single_entropies,
         fftcalc,
         do_multiprocessing,
@@ -56,7 +59,7 @@ class WeightcalcData(object):
         Parameters
         ----------
         mode : str
-            Either 'test' or 'cases'. Tests data are generated dynamically and
+            Either 'tests' or 'cases'. Tests data are generated dynamically and
             stored in specified folders. Case data are read from file and
             stored under organized headings in the saveloc directory specified
             in config.json.
@@ -75,18 +78,18 @@ class WeightcalcData(object):
 
         """
         # Get file locations from configuration file
-        (
-            self.saveloc,
-            self.caseconfigdir,
-            self.casedir,
-            self.infodynamicsloc,
-        ) = config_setup.runsetup(mode, case)
+        self.saveloc, self.caseconfigdir, self.casedir, self.infodynamicsloc = config_setup.runsetup(
+            mode, case
+        )
         # Load case config file
-        with open(
-            os.path.join(self.caseconfigdir, "weightcalc.json")
-        ) as configfile:
-            self.caseconfig = json.load(configfile)
-        configfile.close()
+ #       with open(
+  #          os.path.join(self.caseconfigdir, case + "_weightcalc" + ".json")
+  #      ) as configfile:
+  #          self.caseconfig = json.load(configfile)
+  #      configfile.close()
+        self.caseconfig = convert_db_info_to_dict_weightcalc(case_id)
+
+
         # Get data type
         self.datatype = self.caseconfig["datatype"]
         # Get scenarios
@@ -201,10 +204,9 @@ class WeightcalcData(object):
                     "connections",
                     self.caseconfig[scenario]["connections"],
                 )
-                (
-                    self.connectionmatrix,
-                    _,
-                ) = data_processing.read_connectionmatrix(connection_loc)
+                self.connectionmatrix, _ = data_processing.read_connectionmatrix(
+                    connection_loc
+                )
 
             # Read data into Pandas dataframe
             raw_df = pd.read_csv(raw_tsdata)
@@ -297,7 +299,7 @@ class WeightcalcData(object):
         else:
             self.bias_correct = False
 
-        # Get size of sample vectors for test
+        # Get size of sample vectors for tests
         # Must be smaller than number of samples
         self.testsize = self.caseconfig[settings_name]["testsize"]
 
@@ -700,6 +702,7 @@ def calc_weights(weightcalcdata, method, scenario, writeoutput):
 def weightcalc(
     mode,
     case,
+    case_id,
     writeoutput=False,
     single_entropies=False,
     fftcalc=False,
@@ -713,7 +716,7 @@ def weightcalc(
     Parameters
     ----------
         mode : str
-            Either 'test' or 'cases'. Tests data are generated dynamically and
+            Either 'tests' or 'cases'. Tests data are generated dynamically and
             stored in specified folders. Case data are read from file
             and stored under organized headings in the saveloc directory
             specified in config.json.
@@ -738,7 +741,7 @@ def weightcalc(
     """
 
     weightcalcdata = WeightcalcData(
-        mode, case, single_entropies, fftcalc, do_multiprocessing, use_gpu
+        mode, case, case_id, single_entropies, fftcalc, do_multiprocessing, use_gpu
     )
 
     for scenario in weightcalcdata.scenarios:

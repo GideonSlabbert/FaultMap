@@ -19,31 +19,29 @@ import numpy as np
 
 from faultmap import data_processing, config_setup
 from test import networkgen
+from db_functions import convert_db_info_to_dict_noderank
 
 
 class NoderankData:
     """Creates a data object from file and or function definitions for use in
-    node faultmap methods.
+    node ranking methods.
 
     """
 
-    def __init__(self, mode, case):
+    def __init__(self, mode, case, case_id):
 
         # Get locations from configuration file
-        (
-            self.saveloc,
-            self.caseconfigloc,
-            self.casedir,
-            _,
-        ) = config_setup.runsetup(mode, case)
+        self.saveloc, self.caseconfigloc, self.casedir, _ = config_setup.runsetup(
+            mode, case
+        )
         # Load case config file
-        with open(os.path.join(self.caseconfigloc, "noderank.json")) as f:
-            self.caseconfig = json.load(f)
-        f.close()
-
+        #with open(os.path.join(self.caseconfigloc, case + "_noderank" + ".json")) as f:
+        #    self.caseconfig = json.load(f)
+        #f.close()
+        self.caseconfig = convert_db_info_to_dict_noderank(case_id)
         # Get scenarios
         self.scenarios = self.caseconfig["scenarios"]
-        # Get faultmap methods
+        # Get ranking methods
         self.rank_methods = self.caseconfig["rank_methods"]
         # Get data type
         self.datatype = self.caseconfig["datatype"]
@@ -63,34 +61,39 @@ class NoderankData:
 
         scenario_config = self.caseconfig[scenario]
 
-        if scenario_config:
-            if "settings" in scenario_config:
-                settings = self.caseconfig[scenario_config["settings"]]
-            else:
-                settings = {}
-            if "m" in scenario_config:
-                self.m = scenario_config["m"]
+#        if scenario_config:
+#            if "settings" == "settings_standard":
+#                settings = self.caseconfig[scenario_config["settings"]]
+#            else:
+#                settings = {}
+        if "m" in scenario_config:
+            self.m = scenario_config["m"]
         else:
-            settings = {}
+#            settings = {}
             self.m = 0.999
             logging.info("Using default m value of 0.999")
 
-        if "use_connections" in settings:
-            self.connections_used = settings["use_connections"]
-        else:
-            self.connections_used = False
+
+        #if "use_connections" in settings:
+        #    self.connections_used = settings["use_connections"]
+        #else:
+        #    self.connections_used = False
+        self.connections_used = scenario_config["use_connections"]
 
         # This bias refers to assigning importance weights to different nodes
         # and should not be confused with bias subtraction performed during resultreconstruction
-        if "use_bias" in settings:
-            self.bias_used = settings["use_bias"]
-        else:
-            self.bias_used = False
+        #if "use_bias" in settings:
+        #if scenario_config["use_bias"]:
+        #    self.bias_used = settings["use_bias"]
+        #else:
+        #    self.bias_used = False
+        self.bias_used = scenario_config["use_bias"]
 
-        if "dummies" in settings:
-            self.dummies = settings["dummies"]
-        else:
-            self.dummies = False
+        #if "dummies" in settings:
+        #    self.dummies = settings["dummies"]
+        #else:
+        #    self.dummies = False
+        self.dummies = scenario_config['dummies']
 
         if "katz" in self.rank_methods:
             self.alpha = scenario_config["alpha"]
@@ -111,10 +114,9 @@ class NoderankData:
                 connectionloc = os.path.join(
                     self.casedir, "connections", scenario_config["connections"]
                 )
-                (
-                    self.connectionmatrix,
-                    _,
-                ) = data_processing.read_connectionmatrix(connectionloc)
+                self.connectionmatrix, _ = data_processing.read_connectionmatrix(
+                    connectionloc
+                )
             else:
                 # Generate a fully connected connection matrix
 
@@ -136,12 +138,9 @@ class NoderankData:
         elif self.datatype == "function":
             # Get variables, connection matrix and gainmatrix
             network_gen = scenario_config["networkgen"]
-            (
-                self.connectionmatrix,
-                self.gainmatrix,
-                self.variablelist,
-                _,
-            ) = getattr(networkgen, network_gen)()
+            self.connectionmatrix, self.gainmatrix, self.variablelist, _ = getattr(
+                networkgen, network_gen
+            )()
 
             if self.bias_used:
                 # Generate the bias vector
@@ -154,22 +153,28 @@ class NoderankData:
         logging.info("Number of tags: {}".format(len(self.variablelist)))
 
     def get_boxes(self, scenario, datadir, typename):
-        if "boxindexes" in self.caseconfig[scenario]:
-            if self.caseconfig[scenario]["boxindexes"] == "range":
-                boxindexes = range(
-                    self.caseconfig[scenario]["boxindexes_start"],
-                    self.caseconfig[scenario]["boxindexes_end"] + 1,
-                )
-            else:
-                boxindexes = self.caseconfig[scenario]["boxindexes"]
+        if self.caseconfig[scenario]["boxindex_type"] == "range":
+            boxindexes = range(
+                        self.caseconfig[scenario]["boxindex_start"],
+                        self.caseconfig[scenario]["boxindex_end"] + 1,
+                    )
+        #if "boxindexes" in self.caseconfig[scenario]:
+        #    if self.caseconfig[scenario]["boxindexes"] == "range":
+        #        boxindexes = range(
+        #            self.caseconfig[scenario]["boxindexes_start"],
+        #            self.caseconfig[scenario]["boxindexes_end"] + 1,
+        #        )
+        #    else:
+        #        boxindexes = self.caseconfig[scenario]["boxindexes"]
+        #else:
+        #    boxindexes = "all"
         else:
             boxindexes = "all"
-        if boxindexes == "all":
             boxesdir = os.path.join(datadir, typename)
             boxes = next(os.walk(boxesdir))[1]
             self.boxes = range(len(boxes))
-        else:
-            self.boxes = boxindexes
+        #else:
+        #    self.boxes = boxindexes
 
 
 def writecsv_looprank(filename, items):
@@ -184,14 +189,9 @@ def norm_dict(dictionary):
 
 
 def calc_simple_rank(
-    gainmatrix,
-    variables,
-    biasvector,
-    noderankdata,
-    rank_method,
-    package="networkx",
+    gainmatrix, variables, biasvector, noderankdata, rank_method, package="networkx"
 ):
-    """Constructs the faultmap dictionary using the eigenvector approach
+    """Constructs the ranking dictionary using the eigenvector approach
     i.e. Ax = x where A is the local gain matrix.
 
     """
@@ -209,9 +209,9 @@ def calc_simple_rank(
     # Generate the reset matrix
     # The reset matrix is also referred to as the personalisation matrix
     relative_reset_vector = np.asarray(biasvector)
-    relative_reset_vector_norm = np.asarray(
-        relative_reset_vector, dtype=float
-    ) / sum(relative_reset_vector)
+    relative_reset_vector_norm = np.asarray(relative_reset_vector, dtype=float) / sum(
+        relative_reset_vector
+    )
 
     resetmatrix = np.array([relative_reset_vector_norm] * n)
 
@@ -224,9 +224,7 @@ def calc_simple_rank(
 
     # Normalize the weightmatrix columns
     for col in range(n):
-        weightmatrix[:, col] = weightmatrix[:, col] / np.sum(
-            abs(weightmatrix[:, col])
-        )
+        weightmatrix[:, col] = weightmatrix[:, col] / np.sum(abs(weightmatrix[:, col]))
 
     # Transpose the gainmatrix for when it is used in isolation.
     # It is important that this only happens after the weightmatrix has been
@@ -256,9 +254,7 @@ def calc_simple_rank(
             for row, rowvar in enumerate(variables):
                 # Create fully connected weighted graph for use with
                 # eigenvector centrality analysis
-                reset_gaingraph.add_edge(
-                    rowvar, colvar, weight=weightmatrix[row, col]
-                )
+                reset_gaingraph.add_edge(rowvar, colvar, weight=weightmatrix[row, col])
                 # Create sparsely connected graph based on
                 # significant edge weights
                 # only for use with Katz centrality analysis
@@ -278,9 +274,7 @@ def calc_simple_rank(
 
         elif rank_method == "katz":
             alpha = noderankdata.alpha
-            katz_rankingdict = nx.katz_centrality(
-                sparse_gaingraph.reverse(), alpha
-            )
+            katz_rankingdict = nx.katz_centrality(sparse_gaingraph.reverse(), alpha)
             katz_rankingdict_norm = norm_dict(katz_rankingdict)
             rankingdict = katz_rankingdict_norm
 
@@ -302,7 +296,7 @@ def calc_simple_rank(
             maxeigindex = np.argmax(eigval)
             rankarray = eigvec[:, maxeigindex]
             rankarray_list = [rankelement[0, 0] for rankelement in rankarray]
-            # Take absolute values of faultmap values
+            # Take absolute values of ranking values
             rankarray = abs(np.asarray(rankarray_list))
             # This is the 1-dimensional array composed of rankings (normalised)
             rankarray_norm = (1 / sum(rankarray)) * rankarray
@@ -315,9 +309,7 @@ def calc_simple_rank(
     else:
         raise NameError("Package not defined")
 
-    rankinglist = sorted(
-        rankingdict.items(), key=operator.itemgetter(1), reverse=True
-    )
+    rankinglist = sorted(rankingdict.items(), key=operator.itemgetter(1), reverse=True)
 
     #    nx.write_gml(reset_gaingraph, os.path.join(noderankdata.saveloc,
     #                 "reset_gaingraph.gml"))
@@ -335,14 +327,10 @@ def normalise_rankinglist(rankingdict, originalvariables):
     # Normalise rankings
     total = sum(normalised_rankingdict.values())
     for variable in originalvariables:
-        normalised_rankingdict[variable] = (
-            normalised_rankingdict[variable] / total
-        )
+        normalised_rankingdict[variable] = normalised_rankingdict[variable] / total
 
     normalised_rankinglist = sorted(
-        normalised_rankingdict.items(),
-        key=operator.itemgetter(1),
-        reverse=True,
+        normalised_rankingdict.items(), key=operator.itemgetter(1), reverse=True
     )
 
     return normalised_rankinglist
@@ -412,9 +400,7 @@ def create_importance_graph(
 
     opengraph = nx.DiGraph()
 
-    for col, row in zip(
-        openconnections.nonzero()[1], openconnections.nonzero()[0]
-    ):
+    for col, row in zip(openconnections.nonzero()[1], openconnections.nonzero()[0]):
         source_var = variablelist[col]
         dest_var = variablelist[row]
 
@@ -423,9 +409,7 @@ def create_importance_graph(
             noderankdata.variablelist.index(dest_var),
             noderankdata.variablelist.index(source_var),
         ]
-        opengraph.add_edge(
-            source_var, dest_var, weight=edge_weight, delay=edge_delay
-        )
+        opengraph.add_edge(source_var, dest_var, weight=edge_weight, delay=edge_delay)
     openedgelist = opengraph.edges()
 
     #    closedgraph = nx.DiGraph()
@@ -435,9 +419,7 @@ def create_importance_graph(
     max_weight = np.max(gainmatrix)
     max_nodeimportance = max(ranks.items(), key=operator.itemgetter(1))[1]
 
-    for col, row in zip(
-        closedconnections.nonzero()[1], closedconnections.nonzero()[0]
-    ):
+    for col, row in zip(closedconnections.nonzero()[1], closedconnections.nonzero()[0]):
         newedge = (variablelist[col], variablelist[row])
         #        closedgraph.add_edge(*newedge, weight=gainmatrix[row, col],
         #                             controlloop=int(newedge not in openedgelist))
@@ -542,12 +524,7 @@ def calc_gainrank(gainmatrix, noderankdata, rank_method, dummyweight):
 
     """
 
-    (
-        backwardconnection,
-        backwardgain,
-        backwardvariablelist,
-        backwardbias,
-    ) = data_processing.rankbackward(
+    backwardconnection, backwardgain, backwardvariablelist, backwardbias = data_processing.rankbackward(
         noderankdata.variablelist,
         gainmatrix,
         noderankdata.connectionmatrix,
@@ -572,13 +549,7 @@ def calc_gainrank(gainmatrix, noderankdata, rank_method, dummyweight):
     rankingdicts = [backwardrankingdict]
     rankinglists = [backwardrankinglist]
 
-    return (
-        rankingdicts[0],
-        rankinglists[0],
-        connections[0],
-        variables[0],
-        gains[0],
-    )
+    return rankingdicts[0], rankinglists[0], connections[0], variables[0], gains[0]
 
 
 def get_gainmatrices(noderankdata, datadir, typename):
@@ -604,9 +575,7 @@ def get_gainmatrices(noderankdata, datadir, typename):
 
     for boxindex in noderankdata.boxes:
         gainmatrix = data_processing.read_matrix(
-            os.path.join(
-                datadir, typename, "box{:03d}".format(boxindex + 1), fname
-            )
+            os.path.join(datadir, typename, "box{:03d}".format(boxindex + 1), fname)
         )
 
         gainmatrices.append(gainmatrix)
@@ -647,13 +616,7 @@ def get_delaymatrices(noderankdata, datadir, typename):
 
 
 def dorankcalc(
-    noderankdata,
-    scenario,
-    datadir,
-    typename,
-    rank_method,
-    writeoutput,
-    preprocessing,
+    noderankdata, scenario, datadir, typename, rank_method, writeoutput, preprocessing
 ):
 
     if noderankdata.datatype == "file":
@@ -687,12 +650,10 @@ def dorankcalc(
         dif_boxrankdict_name = "dif_boxrankdict_{}.json"
         dif_rel_boxrankdict_name = "dif_rel_boxrankdict_{}.json"
         dif_typename = "dif_" + typename
-        dif_gainmatrices = get_gainmatrices(
-            noderankdata, datadir, dif_typename
-        )
+        dif_gainmatrices = get_gainmatrices(noderankdata, datadir, dif_typename)
 
-    # Create lists to store the backward faultmap list
-    # for each box and associated gainmatrix faultmap result
+    # Create lists to store the backward ranking list
+    # for each box and associated gainmatrix ranking result
 
     # backward_rankinglists = []
     backward_rankingdicts = []
@@ -720,14 +681,8 @@ def dorankcalc(
         # Set dummyweight to 10
         dummyweight = 10
 
-        # This is where the actual faultmap calculation happens
-        (
-            rankingdict,
-            rankinglist,
-            connections,
-            variables,
-            gains,
-        ) = calc_gainrank(
+        # This is where the actual ranking calculation happens
+        rankingdict, rankinglist, connections, variables, gains = calc_gainrank(
             modgainmatrix, noderankdata, rank_method, dummyweight
         )
 
@@ -750,9 +705,7 @@ def dorankcalc(
         if writeoutput:
             # Make sure the correct directory exists
             # Take datadir and swop out 'weightdata' for 'noderank'
-            savedir = data_processing.change_dirtype(
-                datadir, "weightdata", "noderank"
-            )
+            savedir = data_processing.change_dirtype(datadir, "weightdata", "noderank")
 
             config_setup.ensure_existence(os.path.join(savedir, typename[:-7]))
 
@@ -766,9 +719,7 @@ def dorankcalc(
 
                 # Save the original gainmatrix
                 writecsv_looprank(
-                    os.path.join(
-                        savedir, typename[:-7], originalgainmatrix_name
-                    ),
+                    os.path.join(savedir, typename[:-7], originalgainmatrix_name),
                     gainmatrix,
                 )
 
@@ -781,7 +732,7 @@ def dorankcalc(
         else:
             dummystatus = "nodummies"
 
-        # Save the faultmap list for each box
+        # Save the ranking list for each box
         savepath = config_setup.ensure_existence(
             os.path.join(
                 savedir,
@@ -792,15 +743,12 @@ def dorankcalc(
         )
 
         writecsv_looprank(
-            os.path.join(savepath, rankinglist_name.format(rank_method)),
-            rankinglist,
+            os.path.join(savepath, rankinglist_name.format(rank_method)), rankinglist
         )
 
         if generate_diffs:
             writecsv_looprank(
-                os.path.join(
-                    savepath, dif_rankinglist_name.format(rank_method)
-                ),
+                os.path.join(savepath, dif_rankinglist_name.format(rank_method)),
                 dif_rankinglist,
             )
 
@@ -814,32 +762,20 @@ def dorankcalc(
             delays,
             rankingdict,
         )
-        graph_filename = os.path.join(
-            savepath, graphfile_name.format(rank_method)
-        )
+        graph_filename = os.path.join(savepath, graphfile_name.format(rank_method))
 
         # Decided to keep connections natural, will rotate hierarchical layout
         # in post-processing
         nx.readwrite.write_gml(graph, graph_filename)
 
-        # Get faultmap dictionaries
-        (
-            transientdict,
-            basevaldict,
-            boxrankdict,
-            rel_boxrankdict,
-        ) = calc_transient_importancediffs(
+        # Get ranking dictionaries
+        transientdict, basevaldict, boxrankdict, rel_boxrankdict = calc_transient_importancediffs(
             backward_rankingdicts, noderankdata.variablelist
         )
 
         if generate_diffs:
-            # Get faultmap dictionaries for difference gain arrays
-            (
-                dif_transientdict,
-                dif_basevaldict,
-                dif_boxrankdict,
-                dif_rel_boxrankdict,
-            ) = calc_transient_importancediffs(
+            # Get ranking dictionaries for difference gain arrays
+            dif_transientdict, dif_basevaldict, dif_boxrankdict, dif_rel_boxrankdict = calc_transient_importancediffs(
                 dif_backward_rankingdicts, noderankdata.variablelist
             )
 
@@ -847,8 +783,7 @@ def dorankcalc(
 
         # Normal dictionaries
         data_processing.write_dictionary(
-            os.path.join(savepath, boxrankdict_name.format(rank_method)),
-            boxrankdict,
+            os.path.join(savepath, boxrankdict_name.format(rank_method)), boxrankdict
         )
 
         data_processing.write_dictionary(
@@ -862,44 +797,35 @@ def dorankcalc(
         )
 
         data_processing.write_dictionary(
-            os.path.join(savepath, basevaldict_name.format(rank_method)),
-            basevaldict,
+            os.path.join(savepath, basevaldict_name.format(rank_method)), basevaldict
         )
 
         if generate_diffs:
             # Difference dictionaries
             data_processing.write_dictionary(
-                os.path.join(
-                    savepath, dif_boxrankdict_name.format(rank_method)
-                ),
+                os.path.join(savepath, dif_boxrankdict_name.format(rank_method)),
                 dif_boxrankdict,
             )
 
             data_processing.write_dictionary(
-                os.path.join(
-                    savepath, dif_rel_boxrankdict_name.format(rank_method)
-                ),
+                os.path.join(savepath, dif_rel_boxrankdict_name.format(rank_method)),
                 dif_rel_boxrankdict,
             )
 
             data_processing.write_dictionary(
-                os.path.join(
-                    savepath, dif_transientdict_name.format(rank_method)
-                ),
+                os.path.join(savepath, dif_transientdict_name.format(rank_method)),
                 dif_transientdict,
             )
 
             data_processing.write_dictionary(
-                os.path.join(
-                    savepath, dif_basevaldict_name.format(rank_method)
-                ),
+                os.path.join(savepath, dif_basevaldict_name.format(rank_method)),
                 dif_basevaldict,
             )
 
     return None
 
 
-def noderankcalc(mode, case, writeoutput, preprocessing=False):
+def noderankcalc(mode, case, case_id, writeoutput, preprocessing=False):
     """Ranks the nodes in a network based on gain matrices already generated
     for different weight types.
 
@@ -911,7 +837,7 @@ def noderankcalc(mode, case, writeoutput, preprocessing=False):
         Preprocessing is experimental and should always be set to False
 
     """
-    noderankdata = NoderankData(mode, case)
+    noderankdata = NoderankData(mode, case, case_id)
 
     # Create output directory
     config_setup.ensure_existence(
@@ -928,11 +854,7 @@ def noderankcalc(mode, case, writeoutput, preprocessing=False):
             for weight_method in noderankdata.weight_methods:
 
                 basedir = os.path.join(
-                    noderankdata.saveloc,
-                    "weightdata",
-                    case,
-                    scenario,
-                    weight_method,
+                    noderankdata.saveloc, "weightdata", case, scenario, weight_method
                 )
 
                 if noderankdata.datatype == "file":
@@ -961,9 +883,7 @@ def noderankcalc(mode, case, writeoutput, preprocessing=False):
                             # 'signtested_weight_directional_arrays']
                             if sigtype == "sigtest":
                                 typenames.append("sigweight_absolute_arrays")
-                                typenames.append(
-                                    "sigweight_directional_arrays"
-                                )
+                                typenames.append("sigweight_directional_arrays")
                                 # typenames.append(
                                 #    'signtested_sigweight_directional_arrays')
                         else:
